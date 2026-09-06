@@ -35,6 +35,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 say() { printf '\033[32m==>\033[0m %s\n' "$*"; }
+
+# Data files sit under the source tree when run from a checkout, and flat in
+# /usr/share/speak when run as the package's setup step.
+find_data() {
+  local candidate
+  for candidate in "$SRC/$1" "$SRC/$(basename "$1")" "/usr/share/speak/$(basename "$1")" "/usr/share/speak/$1"; do
+    [[ -r $candidate ]] && { echo "$candidate"; return 0; }
+  done
+  echo "missing data file: $1" >&2
+  return 1
+}
 warn() { printf '\033[33m==>\033[0m %s\n' "$*" >&2; }
 
 BINDIR="$HOME/.local/bin"
@@ -88,7 +99,7 @@ if [[ -e $CONFIG ]]; then
   say "Keeping your existing config at $CONFIG"
   DEFAULT_VOICE=$(bash -c ". '$CONFIG' >/dev/null 2>&1; echo \"\${SPEAK_VOICE:-$DEFAULT_VOICE}\"")
 else
-  sed "s|@DEFAULT_VOICE@|$DEFAULT_VOICE|" "$SRC/config/config.example" > "$CONFIG"
+  sed "s|@DEFAULT_VOICE@|$DEFAULT_VOICE|" "$(find_data config/config.example)" > "$CONFIG"
   say "Wrote $CONFIG"
 fi
 
@@ -106,9 +117,13 @@ else
 fi
 
 # --- service ----------------------------------------------------------------
-UNIT="$HOME/.config/systemd/user/speakd.service"
-mkdir -p "$(dirname "$UNIT")"
-sed "s|@BINDIR@|$BINDIR|" "$SRC/systemd/speakd.service.in" > "$UNIT"
+if (( SYSTEM )) && [[ -r /usr/lib/systemd/user/speakd.service ]]; then
+  say "Using the packaged systemd unit"
+else
+  UNIT="$HOME/.config/systemd/user/speakd.service"
+  mkdir -p "$(dirname "$UNIT")"
+  sed "s|@BINDIR@|$BINDIR|" "$(find_data systemd/speakd.service.in)" > "$UNIT"
+fi
 systemctl --user daemon-reload
 systemctl --user enable --now speakd
 say "speakd enabled and running"
@@ -136,7 +151,7 @@ fi
 
 # --- optional: Omarchy battery-low hook -------------------------------------
 if (( WITH_BATTERY )) && command -v omarchy-hook-install >/dev/null; then
-  omarchy-hook-install battery-low "$SRC/hooks/battery-low/speak-battery-low" >/dev/null
+  omarchy-hook-install battery-low "$(find_data hooks/battery-low/speak-battery-low)" >/dev/null
   say "Low-battery warnings will be spoken"
 fi
 

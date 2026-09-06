@@ -6,3 +6,4 @@ src/
 
 # installer backups
 *.bak.*
+*.pkg.tar.xz

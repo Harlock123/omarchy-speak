@@ -12,7 +12,7 @@ optdepends=(
   'libnotify: desktop notification when there is nothing to speak'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('4c2ee58df6b25dd4a5196d12b4821fd2dd5533d8820c8d0b7bc6850a91ac5667')
 
 package() {
   cd "$srcdir/$pkgname-$pkgver"
@@ -25,6 +25,7 @@ package() {
     install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/speakd.service"
 
   install -Dm644 config/config.example "$pkgdir/usr/share/speak/config.example"
+  install -Dm644 systemd/speakd.service.in "$pkgdir/usr/share/speak/speakd.service.in"
   install -Dm755 hooks/battery-low/speak-battery-low \
     "$pkgdir/usr/share/speak/hooks/battery-low/speak-battery-low"
   install -Dm755 install.sh "$pkgdir/usr/share/speak/setup.sh"
