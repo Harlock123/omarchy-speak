@@ -12,7 +12,7 @@ optdepends=(
   'libnotify: desktop notification when there is nothing to speak'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('4c2ee58df6b25dd4a5196d12b4821fd2dd5533d8820c8d0b7bc6850a91ac5667')
+sha256sums=('83552d6aac31b9429c46746343b1f2620961f7bf24895ee1916e98fc0e758432')
 
 package() {
   cd "$srcdir/$pkgname-$pkgver"
