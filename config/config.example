@@ -1,0 +1,25 @@
+# Configuration for the `speak` text-to-speech service.
+# Edit and then: systemctl --user restart speakd
+# Every value can be overridden per-invocation by an environment variable.
+
+# Voice model (in SPEAK_VOICES_DIR). Add more with: speak install-voice <name>
+SPEAK_VOICE="${SPEAK_VOICE:-@DEFAULT_VOICE@}"
+
+# Speaking rate. Higher = slower. 0.85 is brisk, 1.15 is measured.
+SPEAK_LENGTH_SCALE="${SPEAK_LENGTH_SCALE:-1.0}"
+
+# Seconds of silence inserted after each sentence.
+SPEAK_SENTENCE_SILENCE="${SPEAK_SENTENCE_SILENCE:-0.2}"
+
+# Utterances longer than this are truncated (protects against a runaway paste).
+SPEAK_MAX_CHARS="${SPEAK_MAX_CHARS:-1200}"
+
+# Voice inside a multi-speaker model (0-based). `speak speakers <voice>` shows the count.
+SPEAK_SPEAKER="${SPEAK_SPEAKER:-0}"
+
+# Expressiveness. Higher noise_scale = more pitch variation; higher noise_w = more
+# variation in phoneme timing. Piper defaults are 0.667 / 0.8.
+SPEAK_NOISE_SCALE="${SPEAK_NOISE_SCALE:-0.667}"
+SPEAK_NOISE_W="${SPEAK_NOISE_W:-0.8}"
+
+SPEAK_VOICES_DIR="${SPEAK_VOICES_DIR:-$HOME/.local/share/piper/voices}"

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Speak the current selection; fall back to the clipboard when nothing is selected.
+text=$(wl-paste --primary --no-newline 2>/dev/null)
+[[ -n ${text// /} ]] || text=$(wl-paste --no-newline 2>/dev/null)
+[[ -n ${text// /} ]] || { notify-send "Nothing to speak" "Select some text first."; exit 0; }
+printf '%s' "$text" | speak now

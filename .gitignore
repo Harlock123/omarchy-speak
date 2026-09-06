@@ -1,0 +1,8 @@
+# makepkg build artifacts
+pkg/
+src/
+*.pkg.tar.zst
+*.tar.gz
+
+# installer backups
+*.bak.*

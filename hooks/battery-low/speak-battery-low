@@ -1,0 +1,4 @@
+#!/bin/bash
+# Say the low-battery warning out loud as well as showing it.
+level="${1:-}"
+speak now "Heads up. Battery is down to ${level} percent. Time to plug in."

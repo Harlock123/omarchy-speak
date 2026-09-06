@@ -1,0 +1,24 @@
+#!/bin/bash
+# Claude Code Stop hook: speak Claude's final response instead of only printing it.
+# Reads the hook payload on stdin, pulls the last assistant text from the transcript.
+set -uo pipefail
+
+input=$(cat)
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
+[[ -n $transcript && -r $transcript ]] || exit 0
+
+# Only the tail of the transcript is needed, and it keeps big sessions cheap.
+text=$(tail -n 400 "$transcript" | jq -rs '
+  [ .[]
+    | select(.type == "assistant")
+    | .message.content[]?
+    | select(.type == "text")
+    | .text ]
+  | last // empty' 2>/dev/null)
+
+[[ -n ${text// /} ]] || exit 0
+
+# Long answers are for reading, not listening: speak the opening and stop there.
+limit="${CLAUDE_SPEAK_MAX_CHARS:-400}"
+printf '%s' "${text:0:$limit}" | speak now
+exit 0

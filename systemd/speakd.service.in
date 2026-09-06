@@ -1,0 +1,15 @@
+[Unit]
+Description=Local text-to-speech queue (Piper)
+After=pipewire.service wireplumber.service
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/speakd
+Restart=on-failure
+RestartSec=2
+# Keep the daemon out of the way of anything you're actually doing.
+Nice=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,51 @@
+#!/bin/bash
+# speakd - serializes text-to-speech so two things never talk over each other.
+# Started by systemd: systemctl --user start speakd
+set -uo pipefail
+
+# Find the shared library wherever this was installed from.
+for _lib in "${SPEAK_LIB:-}" \
+            "$(dirname "$(readlink -f "$0")")/../lib/speak-lib.sh" \
+            /usr/share/speak/lib.sh \
+            "$HOME/.local/share/speak/lib.sh"; do
+  [[ -n $_lib && -r $_lib ]] && { . "$_lib"; break; }
+done
+if ! declare -f speak_load_config >/dev/null; then
+  echo "speak: cannot find speak-lib.sh" >&2
+  exit 1
+fi
+speak_load_config
+
+cleanup() {
+  local pid
+  if [[ -r $SPEAK_PIDFILE ]] && pid=$(<"$SPEAK_PIDFILE"); then
+    kill -TERM -- "-$pid" 2>/dev/null
+  fi
+  exit 0
+}
+trap cleanup TERM INT
+
+# Refuse to start rather than spin uselessly if the engine is missing.
+speak_piper_bin >/dev/null || { echo "speakd: no piper binary found" >&2; exit 1; }
+
+echo "speakd: ready (voice=$SPEAK_VOICE)"
+
+while :; do
+  next=$(ls -1 "$SPEAK_SPOOL" 2>/dev/null | head -n1)
+  if [[ -z $next ]]; then
+    sleep 0.1
+    continue
+  fi
+
+  item="$SPEAK_SPOOL/$next"
+  [[ -r $item ]] || continue
+  IFS=$'\t' read -r voice speaker rate noise noise_w < <(head -n1 "$item")
+  text=$(tail -n +2 "$item")
+  rm -f "$item"
+
+  [[ -n ${text// /} ]] || continue
+  SPEAK_LENGTH_SCALE="${rate:-$SPEAK_LENGTH_SCALE}" \
+  SPEAK_NOISE_SCALE="${noise:-$SPEAK_NOISE_SCALE}" \
+  SPEAK_NOISE_W="${noise_w:-$SPEAK_NOISE_W}" \
+    speak_play "$text" "$voice" "${speaker:-0}"
+done

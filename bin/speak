@@ -1,0 +1,146 @@
+#!/bin/bash
+# speak - say something out loud, locally, via Piper.
+#
+#   speak "build finished"          queue it
+#   somecmd | speak                 read stdin
+#   speak now "stop what you're doing"   jump the queue
+#   speak stop                      shut up
+set -uo pipefail
+
+# Find the shared library wherever this was installed from.
+for _lib in "${SPEAK_LIB:-}" \
+            "$(dirname "$(readlink -f "$0")")/../lib/speak-lib.sh" \
+            /usr/share/speak/lib.sh \
+            "$HOME/.local/share/speak/lib.sh"; do
+  [[ -n $_lib && -r $_lib ]] && { . "$_lib"; break; }
+done
+if ! declare -f speak_load_config >/dev/null; then
+  echo "speak: cannot find speak-lib.sh" >&2
+  exit 1
+fi
+speak_load_config
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  speak [-v VOICE] [-s N] [--raw] [TEXT...]  Queue TEXT (or stdin) to be spoken
+  speak now [-v VOICE] [-s N] TEXT...        Interrupt and say this immediately
+  speak stop                                 Stop speaking and drop the queue
+  speak status                               Show daemon state and queue depth
+  speak voices                               List installed voices
+  speak speakers [VOICE]                     How many voices a model carries
+  speak install-voice NAME                   Download a voice (en_GB-alba-medium)
+  speak test                                 Say a test phrase
+
+Options:
+  -v, --voice NAME   Use a specific voice for this utterance
+  -s, --speaker N    Pick a voice inside a multi-speaker model (0-based)
+  -r, --rate N       Speaking rate; higher is slower (default 1.0)
+      --raw          Skip markdown/URL cleanup; speak the text verbatim
+Config: ~/.config/speak/config
+USAGE
+}
+
+drop_queue() {
+  rm -f "$SPEAK_SPOOL"/* 2>/dev/null
+}
+
+stop_playing() {
+  local pid
+  if [[ -r $SPEAK_PIDFILE ]] && pid=$(<"$SPEAK_PIDFILE"); then
+    kill -TERM -- "-$pid" 2>/dev/null
+  fi
+}
+
+enqueue() {
+  local text="$1" voice="$2" speaker="$3" rate="$4"
+  local stamp tmp
+  stamp=$(printf '%019d-%05d' "$(date +%s%N)" "$RANDOM")
+  tmp="$SPEAK_RUNTIME/tmp/$stamp"
+  { printf '%s\t%s\t%s\t%s\t%s\n' "$voice" "$speaker" "$rate" \
+      "$SPEAK_NOISE_SCALE" "$SPEAK_NOISE_W"; printf '%s' "$text"; } > "$tmp"
+  mv "$tmp" "$SPEAK_SPOOL/$stamp"
+}
+
+daemon_running() {
+  systemctl --user is-active --quiet speakd 2>/dev/null
+}
+
+voice="$SPEAK_VOICE"
+speaker="$SPEAK_SPEAKER"
+rate="$SPEAK_LENGTH_SCALE"
+raw=0
+mode=queue
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+  stop)   stop_playing; drop_queue; exit 0 ;;
+  status)
+    daemon_running && echo "speakd: running" || echo "speakd: not running (speak falls back to synchronous playback)"
+    echo "voice:  $SPEAK_VOICE"
+    echo "queued: $(ls -1 "$SPEAK_SPOOL" 2>/dev/null | wc -l)"
+    [[ -r $SPEAK_PIDFILE ]] && echo "state:  speaking" || echo "state:  idle"
+    exit 0 ;;
+  speakers)
+    v="${2:-$SPEAK_VOICE}"
+    n=$(speak_speaker_count "$v") || { echo "speak: voice '$v' not installed" >&2; exit 1; }
+    if [[ $n -le 1 ]]; then
+      echo "$v: single voice"
+    else
+      echo "$v: $n voices, select with -s 0 .. -s $((n - 1))"
+    fi
+    exit 0 ;;
+  voices)
+    ls -1 "$SPEAK_VOICES_DIR"/*.onnx 2>/dev/null |
+      xargs -rn1 basename | sed 's/\.onnx$//' |
+      sed "s/^$SPEAK_VOICE\$/& (default)/"
+    exit 0 ;;
+  install-voice)
+    name="${2:-}"
+    [[ -n $name ]] || { echo "speak: need a voice name, e.g. en_GB-alba-medium" >&2; exit 1; }
+    locale="${name%%-*}"; rest="${name#*-}"
+    short="${rest%-*}"; quality="${rest##*-}"
+    base="https://huggingface.co/rhasspy/piper-voices/resolve/main/${locale%%_*}/$locale/$short/$quality/$name"
+    mkdir -p "$SPEAK_VOICES_DIR"
+    echo "Downloading $name ..."
+    curl -fL# -o "$SPEAK_VOICES_DIR/$name.onnx" "$base.onnx" &&
+      curl -fsL -o "$SPEAK_VOICES_DIR/$name.onnx.json" "$base.onnx.json" &&
+      echo "Installed. Try: speak -v $name 'hello'" ||
+      { rm -f "$SPEAK_VOICES_DIR/$name.onnx"{,.json}; echo "speak: no such voice (see huggingface.co/rhasspy/piper-voices)" >&2; exit 1; }
+    exit 0 ;;
+  test)
+    exec "$0" now "Text to speech is working. This is the $SPEAK_VOICE voice, running locally on your machine." ;;
+  now) mode=now; shift ;;
+esac
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -v|--voice) voice="${2:-}"; shift 2 ;;
+    -s|--speaker) speaker="${2:-0}"; shift 2 ;;
+    -r|--rate) rate="${2:-1.0}"; shift 2 ;;
+    --raw) raw=1; shift ;;
+    --) shift; break ;;
+    -*) echo "speak: unknown option $1" >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+
+if [[ $# -gt 0 ]]; then
+  text="$*"
+else
+  text=$(cat)
+fi
+
+(( raw )) || text=$(printf '%s' "$text" | speak_clean)
+[[ -n ${text// /} ]] || exit 0
+
+if [[ $mode == now ]]; then
+  stop_playing
+  drop_queue
+fi
+
+if daemon_running; then
+  enqueue "$text" "$voice" "$speaker" "$rate"
+else
+  SPEAK_LENGTH_SCALE="$rate" speak_play "$text" "$voice" "$speaker"
+fi
